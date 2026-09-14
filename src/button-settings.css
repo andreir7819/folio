@@ -1,0 +1,30 @@
+.button .portfolio-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 15px;
+  border: 1px solid transparent;
+  background: var(--button-accent);
+  color: var(--button-text);
+  box-shadow: none;
+  font-weight: 700;
+  transition: transform .18s ease, box-shadow .18s ease, background .18s ease;
+}
+
+.button .portfolio-button:hover { transform: translateY(-2px); box-shadow: 0 6px 13px color-mix(in srgb, var(--button-accent), transparent 70%); }
+.button .portfolio-button.button-small { padding: 10px 13px; font-size: 11px; }
+.button .portfolio-button.button-medium { padding: 15px 20px; font-size: 13px; }
+.button .portfolio-button.button-large { padding: 19px 27px; font-size: 15px; }
+.button .portfolio-button.button-sharp { border-radius: 1px; }
+.button .portfolio-button.button-soft { border-radius: 7px; }
+.button .portfolio-button.button-pill { border-radius: 999px; }
+.button .portfolio-button.button-soft { background: color-mix(in srgb, var(--button-accent), white 82%); color: var(--button-accent); }
+.button .portfolio-button.button-outline { border-color: var(--button-accent); background: transparent; color: var(--button-accent); }
+.button .portfolio-button.button-text { padding-left: 0; padding-right: 0; background: transparent; color: var(--button-accent); }
+.button .portfolio-button.button-text:hover { box-shadow: none; transform: translateX(2px); }
+
+.button-settings { margin: 16px 0 13px; padding: 11px 8px 1px; border: 1px solid #e1ddd4; border-radius: 6px; background: #f8f6ef; }
+.button-settings > p { margin: 0 0 10px; color: #59574f; font-size: 11px; font-weight: 700; }
+.button-settings > p:not(:first-child) { margin-top: 13px; }
+.button-setting-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 8px; }
+.button-color-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.compact-toggle { margin-bottom: 11px; }

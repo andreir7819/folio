@@ -1,0 +1,87 @@
+.portfolio-card {
+  position: relative;
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+
+.portfolio-open {
+  width: 100%;
+  min-height: inherit;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+}
+
+.portfolio-open > div:last-child { padding: 17px; }
+
+.portfolio-open:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -3px;
+}
+
+.portfolio-delete {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 31px;
+  height: 31px;
+  display: grid;
+  place-items: center;
+  padding: 0 0 2px;
+  border: 1px solid #ffffff85;
+  border-radius: 50%;
+  background: #24251ee8;
+  color: #fff;
+  box-shadow: 0 3px 10px #31251f35;
+  font: 17px/1 Arial, sans-serif;
+  opacity: 0;
+  transform: translateY(-3px);
+  transition: opacity .16s ease, transform .16s ease, background .16s ease;
+}
+
+.portfolio-card:hover .portfolio-delete,
+.portfolio-card:focus-within .portfolio-delete { opacity: 1; transform: none; }
+.portfolio-delete:hover { background: #bd4c3d; }
+.portfolio-delete:focus-visible { opacity: 1; transform: none; outline: 2px solid #fff; outline-offset: 2px; }
+
+.delete-dialog-backdrop {
+  position: fixed;
+  z-index: 100;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  background: #24251e75;
+  backdrop-filter: blur(4px);
+  animation: delete-backdrop-in .16s ease both;
+}
+
+.delete-dialog {
+  width: min(100%, 405px);
+  padding: 28px;
+  border: 1px solid #d8d2c6;
+  border-radius: 12px;
+  background: #fffefa;
+  box-shadow: 0 25px 70px #201d1840;
+  animation: delete-dialog-in .2s cubic-bezier(.2, .8, .2, 1) both;
+}
+
+.delete-dialog-icon { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 9px; background: #fff0ec; color: #ca5543; font: 20px/1 Arial, sans-serif; }
+.delete-dialog > p { margin: 18px 0 8px; color: #9b746b; font: 700 10px 'DM Mono', monospace; letter-spacing: .1em; }
+.delete-dialog h2 { margin: 0; color: #2c2d27; font: 600 27px/1.04 'Playfair Display', Georgia, serif; letter-spacing: -.04em; }
+.delete-dialog > span:not(.delete-dialog-icon) { display: block; margin-top: 14px; color: #6c6961; font-size: 14px; line-height: 1.5; }
+.delete-dialog > div { display: flex; justify-content: flex-end; gap: 8px; margin-top: 24px; }
+.delete-dialog button { min-height: 37px; padding: 0 13px; border: 1px solid #d9d4c9; border-radius: 6px; background: #fffefa; color: #55564e; font-size: 12px; font-weight: 700; }
+.delete-dialog .confirm-delete { border-color: #b8483b; background: #c35343; color: #fff; }
+.delete-dialog .confirm-delete:hover { background: #ad4033; }
+
+@keyframes delete-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+@keyframes delete-dialog-in { from { opacity: 0; transform: translateY(8px) scale(.98); } to { opacity: 1; transform: none; } }
+
+@media (max-width: 640px) {
+  .portfolio-delete { opacity: 1; transform: none; }
+  .delete-dialog { padding: 23px; }
+}

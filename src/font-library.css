@@ -1,0 +1,52 @@
+.font-picker > div.font-picker-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.font-picker-title small {
+  color: #8b867c;
+  font: 9px 'DM Mono', monospace;
+}
+
+.font-search {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 0 7px;
+  padding: 7px 8px;
+  border: 1px solid #d8d4ca;
+  border-radius: 5px;
+  background: #fff;
+  color: var(--ink);
+  font: 11px 'DM Sans', sans-serif;
+  outline-color: var(--accent);
+}
+
+.font-picker > .font-library-scroll {
+  display: block;
+  min-width: 0;
+  max-height: 290px;
+  padding-right: 3px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: #c8c2b6 transparent;
+}
+
+.font-picker .font-featured,
+.font-picker .font-results {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.font-featured { margin-bottom: 7px; }
+
+.font-results .font-choice { min-height: 54px; }
+.font-library-scroll .font-choice { min-width: 0; width: 100%; box-sizing: border-box; }
+
+.font-empty {
+  margin: 8px 0;
+  color: #8b867c;
+  font-size: 10px;
+}
