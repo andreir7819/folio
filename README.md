@@ -1,32 +1,50 @@
-# React + TypeScript + Vite
+# Folio
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+Folio is a web-based portfolio builder designed to make creating a personal portfolio more interactive, customizable, and enjoyable.
 
-Currently, two official plugins are available:
+Instead of relying on a fixed portfolio template, Folio lets users build their site using modular, customizable blocks and arrange their content visually.
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+> **Status:** Folio is currently in active development.
 
-## React Compiler
+## ✨ Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Drag-and-drop portfolio editing
+- Modular content blocks
+- Customizable layouts
+- Animated transitions
+- Project showcases with dedicated project pages
+- Reusable portfolio templates
+- Interactive editing experience
+- Portfolio publishing
 
-## Expanding the Oxlint configuration
+More features are planned as development continues.
 
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
+## 🛠️ Built With
 
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
-```
+- React
+- Vite
+- JavaScript / TypeScript
+- HTML
+- CSS
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+*The technology stack may change as Folio develops.*
+
+## 🎯 Why Folio?
+
+Most portfolio builders focus on getting information onto a page as quickly as possible. Folio is an experiment in making the process of **building the portfolio itself** more engaging.
+
+The goal is to give users enough structure to quickly create something polished while still giving them the freedom to make their portfolio feel like their own.
+
+## 🚧 Development
+
+Folio is still under active development and is not currently ready for production use.
+
+The repository began tracking development after the project was already underway, so the initial Git commit represents a baseline of the existing Folio project rather than the beginning of development.
+
+## 📸 Preview
+
+Screenshots and demos coming soon.
+
+## 📄 License
+
+No license has been specified yet.
