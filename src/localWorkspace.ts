@@ -1,4 +1,4 @@
-import type { Asset, Portfolio } from './App'
+import type { Asset, Portfolio } from './domain/types'
 
 export type LocalProfile = {
   id: string

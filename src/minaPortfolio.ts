@@ -1,4 +1,4 @@
-import type { Block, Page } from './App'
+import type { Block, Page } from './domain/types'
 
 // Fictional demo content, built entirely from the same editable blocks as user portfolios.
 export function createMinaPages(): Page[] {
