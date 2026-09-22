@@ -1,0 +1,41 @@
+name: Quality checks
+
+on:
+  push:
+  pull_request:
+
+# This workflow only reads the repository. It cannot change code, publish Folio,
+# or access any credentials.
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Lint and build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Use Node.js 24
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - name: Use pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.19.0
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check code quality
+        run: pnpm run lint
+
+      - name: Build Folio
+        run: pnpm run build
