@@ -15,6 +15,7 @@ import { createMinaPages } from './minaPortfolio'
 import LocalAccountScreen from './LocalAccountScreen'
 import { BlockView } from './components/BlockView'
 import { Field, Inspector } from './components/Inspector'
+import { AccountSettings } from './components/AccountSettings'
 import { createLocalProfile, loadLocalWorkspace, saveLocalWorkspace, type LocalWorkspace } from './localWorkspace'
 import type { Asset, AssetKind, Block, BlockType, CanvasAnchorX, CanvasAnchorY, DragStartPositions, ImageFit, LayoutMode, Page, PageBackground, PageTransition, Portfolio, Position, ResizeCorner, ResponsiveOverride, ResponsiveOverrideKey, ResponsiveRange, ShapeResize, BackgroundType } from './domain/types'
 import { blockInfo, defaultBackground, defaultPosition, makeBlock, makeId, MAX_BLOCKS_PER_PAGE, MAX_FONT_FILE_SIZE, MAX_HISTORY_STEPS, MAX_IMAGE_FILE_SIZE, offsetFromPhysicalPercent, physicalAnchorPercent, rangeForViewport, rangeSpecs, trayGroups } from './domain/folio'
@@ -44,7 +45,7 @@ function App() {
   const [signedIn, setSignedIn] = useState(() => window.localStorage.getItem('folio-local-session') === 'active')
   const [authMode, setAuthMode] = useState<'signup' | 'login' | null>(null)
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'error'>('loading')
-  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'library' | 'builder'>('home')
+  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'library' | 'account' | 'builder'>('home')
   const [pageId, setPageId] = useState('home')
   const [selectedId, setSelectedId] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -146,6 +147,11 @@ function App() {
   }
   const setPortfolios = (update: Portfolio[] | ((items: Portfolio[]) => Portfolio[])) => commitWorkspace(current => ({ ...current, portfolios: typeof update === 'function' ? update(current.portfolios) : update }))
   const setAssets = (update: Asset[] | ((items: Asset[]) => Asset[])) => commitWorkspace(current => ({ ...current, assets: typeof update === 'function' ? update(current.assets) : update }))
+  const updateProfile = (patch: Pick<LocalWorkspace['profile'], 'name' | 'email'>) => {
+    const next = { ...workspaceRef.current, profile: { ...workspaceRef.current.profile, ...patch } }
+    workspaceRef.current = next
+    setWorkspaceState(next)
+  }
   const setActivePortfolioId = (id: string) => {
     const next = { ...workspaceRef.current, activePortfolioId: id }
     workspaceRef.current = next
@@ -459,7 +465,8 @@ function App() {
   if (view === 'home' || !signedIn || !hasLocalProfile) return <HomeScreen isSignedIn={signedIn && hasLocalProfile} onStart={() => signedIn && hasLocalProfile ? setView('library') : setAuthMode(hasLocalProfile ? 'login' : 'signup')} onLogin={() => setAuthMode('login')} onCredits={() => setView('credits')} onPlans={() => setView('plans')} />
   if (view === 'credits') return <CreditsScreen onBack={() => setView('home')} />
   if (view === 'plans') return <PlansScreen onBack={() => setView('home')} onStart={() => setView('library')} />
-  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onSignOut={() => { window.localStorage.removeItem('folio-local-session'); setSignedIn(false); setView('home') }} />
+  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onAccount={() => setView('account')} onSignOut={() => { window.localStorage.removeItem('folio-local-session'); setSignedIn(false); setView('home') }} />
+  if (view === 'account') return <AccountSettings profile={workspace.profile} portfolioCount={portfolios.length} assetCount={assets.length} assetBytes={assets.reduce((total, asset) => total + Math.floor(asset.dataUrl.length * .75), 0)} onSave={updateProfile} onBack={() => setView('library')} onSignOut={() => { window.localStorage.removeItem('folio-local-session'); setSignedIn(false); setView('home') }} />
 
   const togglePreview = () => {
     if (!preview) {
@@ -481,10 +488,10 @@ function App() {
   </main>
 }
 
-function PortfolioLibrary({ portfolios, profile, onOpen, onCreate, onDelete, onSignOut }: { portfolios: Portfolio[]; profile: LocalWorkspace['profile']; onOpen: (item: Portfolio) => void; onCreate: () => void; onDelete: (id: string) => void; onSignOut: () => void }) {
+function PortfolioLibrary({ portfolios, profile, onOpen, onCreate, onDelete, onAccount, onSignOut }: { portfolios: Portfolio[]; profile: LocalWorkspace['profile']; onOpen: (item: Portfolio) => void; onCreate: () => void; onDelete: (id: string) => void; onAccount: () => void; onSignOut: () => void }) {
   const limitReached = portfolios.length >= 3
   const [pendingDeletion, setPendingDeletion] = useState<Portfolio | null>(null)
-  return <main className="library-screen"><header className="library-header"><div className="brand"><i>✦</i> folio</div><div className="library-account"><span>{profile.name} · local workspace</span><button onClick={onSignOut}>Sign out</button></div></header><section className="library-content"><p className="library-eyebrow">YOUR PORTFOLIOS · FREE PLAN {portfolios.length}/3</p><h1>Every body of work<br />deserves its own home.</h1><p className="library-intro">This browser saves your work automatically. Open a portfolio to keep shaping it, or start a fresh new world.</p><div className="portfolio-grid">{portfolios.map(item => <article className="portfolio-card" key={item.id}><button className="portfolio-open" onClick={() => onOpen(item)} aria-label={`Open ${item.name}`}><div className="portfolio-cover" style={{ background: `linear-gradient(135deg, ${item.color}, #fff0cf)` }}><span>✦</span><small>OPEN ↗</small></div><div><strong>{item.name}</strong><p>{item.description}</p><span>Saved on this device</span></div></button><button className="portfolio-delete" type="button" aria-label={`Delete ${item.name}`} title="Delete portfolio" onClick={() => setPendingDeletion(item)}>⌫</button></article>)}<button className="new-portfolio-card" onClick={onCreate} disabled={limitReached}><span className="new-plus">+</span><strong>{limitReached ? 'Your free shelf is full' : 'Make a new portfolio'}</strong><small>{limitReached ? 'Free includes up to 3 portfolios' : `${3 - portfolios.length} free portfolio${3 - portfolios.length === 1 ? '' : 's'} left`}</small></button></div></section>{pendingDeletion && <div className="delete-dialog-backdrop" role="presentation" onMouseDown={() => setPendingDeletion(null)}><section className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-portfolio-title" aria-describedby="delete-portfolio-description" onMouseDown={event => event.stopPropagation()}><span className="delete-dialog-icon">⌫</span><p>DELETE PORTFOLIO</p><h2 id="delete-portfolio-title">Delete “{pendingDeletion.name}”?</h2><span id="delete-portfolio-description">This removes the portfolio and all of its pages from this browser. It can’t be undone.</span><div><button type="button" onClick={() => setPendingDeletion(null)}>Keep it</button><button className="confirm-delete" type="button" onClick={() => { onDelete(pendingDeletion.id); setPendingDeletion(null) }}>Delete portfolio</button></div></section></div>}</main>
+  return <main className="library-screen"><header className="library-header"><div className="brand"><i>✦</i> folio</div><div className="library-account"><button className="library-account-profile" onClick={onAccount}>{profile.name} <span>Account settings</span></button><button onClick={onSignOut}>Sign out</button></div></header><section className="library-content"><p className="library-eyebrow">YOUR PORTFOLIOS · FREE PLAN {portfolios.length}/3</p><h1>Every body of work<br />deserves its own home.</h1><p className="library-intro">This browser saves your work automatically. Open a portfolio to keep shaping it, or start a fresh new world.</p><div className="portfolio-grid">{portfolios.map(item => <article className="portfolio-card" key={item.id}><button className="portfolio-open" onClick={() => onOpen(item)} aria-label={`Open ${item.name}`}><div className="portfolio-cover" style={{ background: `linear-gradient(135deg, ${item.color}, #fff0cf)` }}><span>✦</span><small>OPEN ↗</small></div><div><strong>{item.name}</strong><p>{item.description}</p><span>Saved on this device</span></div></button><button className="portfolio-delete" type="button" aria-label={`Delete ${item.name}`} title="Delete portfolio" onClick={() => setPendingDeletion(item)}>⌫</button></article>)}<button className="new-portfolio-card" onClick={onCreate} disabled={limitReached}><span className="new-plus">+</span><strong>{limitReached ? 'Your free shelf is full' : 'Make a new portfolio'}</strong><small>{limitReached ? 'Free includes up to 3 portfolios' : `${3 - portfolios.length} free portfolio${3 - portfolios.length === 1 ? '' : 's'} left`}</small></button></div></section>{pendingDeletion && <div className="delete-dialog-backdrop" role="presentation" onMouseDown={() => setPendingDeletion(null)}><section className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-portfolio-title" aria-describedby="delete-portfolio-description" onMouseDown={event => event.stopPropagation()}><span className="delete-dialog-icon">⌫</span><p>DELETE PORTFOLIO</p><h2 id="delete-portfolio-title">Delete “{pendingDeletion.name}”?</h2><span id="delete-portfolio-description">This removes the portfolio and all of its pages from this browser. It can’t be undone.</span><div><button type="button" onClick={() => setPendingDeletion(null)}>Keep it</button><button className="confirm-delete" type="button" onClick={() => { onDelete(pendingDeletion.id); setPendingDeletion(null) }}>Delete portfolio</button></div></section></div>}</main>
 }
 function Tutorial({ onClose }: { onClose: () => void }) {
   const steps = [
