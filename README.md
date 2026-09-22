@@ -45,4 +45,6 @@ The repository began tracking development after the project was already underway
 
 <img width="1728" height="964" alt="Screenshot 2026-09-22 at 10 52 22 AM" src="https://github.com/user-attachments/assets/3da854be-1e09-4e2d-af80-42d75e6df75a" />
 
+##
+
 © 2026 Andrei Ringor. Folio is shared publicly as a portfolio project. The source code is not licensed for reuse, redistribution, or commercial use without written permission.
