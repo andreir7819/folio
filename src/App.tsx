@@ -11,8 +11,10 @@ import { motionCss } from './motion'
 import HomeScreen from './HomeScreen'
 import CreditsScreen from './CreditsScreen'
 import PlansScreen from './PlansScreen'
+import HelpCenter from './HelpCenter'
 import { createMinaPages } from './minaPortfolio'
 import LocalAccountScreen from './LocalAccountScreen'
+import AuthScreen from './AuthScreen'
 import { BlockView } from './components/BlockView'
 import { Field, Inspector } from './components/Inspector'
 import { AccountSettings } from './components/AccountSettings'
@@ -21,6 +23,8 @@ import type { Asset, AssetKind, Block, BlockType, CanvasAnchorX, CanvasAnchorY, 
 import { blockInfo, defaultBackground, defaultPosition, makeBlock, makeId, MAX_BLOCKS_PER_PAGE, MAX_FONT_FILE_SIZE, MAX_HISTORY_STEPS, MAX_IMAGE_FILE_SIZE, offsetFromPhysicalPercent, physicalAnchorPercent, rangeForViewport, rangeSpecs, trayGroups } from './domain/folio'
 import { fontStack } from './domain/fonts'
 import { pageBackgroundStyle } from './domain/pageStyle'
+import { supabase, supabaseIsConfigured } from './lib/supabase'
+import type { User } from '@supabase/supabase-js'
 
 export type { Asset, Block, Page, Portfolio } from './domain/types'
 
@@ -43,9 +47,11 @@ function App() {
   const [workspaceReady, setWorkspaceReady] = useState(false)
   const [hasLocalProfile, setHasLocalProfile] = useState(false)
   const [signedIn, setSignedIn] = useState(() => window.localStorage.getItem('folio-local-session') === 'active')
-  const [authMode, setAuthMode] = useState<'signup' | 'login' | null>(null)
+  const [authMode, setAuthMode] = useState<'signup' | 'login' | 'reset' | null>(null)
+  const [authUser, setAuthUser] = useState<User | null>(null)
+  const [authReady, setAuthReady] = useState(!supabaseIsConfigured)
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'error'>('loading')
-  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'library' | 'account' | 'builder'>('home')
+  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'help' | 'library' | 'account' | 'builder'>('home')
   const [pageId, setPageId] = useState('home')
   const [selectedId, setSelectedId] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -60,6 +66,39 @@ function App() {
     window.addEventListener(PANEL_EVENT, closeTray)
     return () => window.removeEventListener(PANEL_EVENT, closeTray)
   }, [])
+  useEffect(() => {
+    if (!supabase) return
+    let active = true
+    void supabase.auth.getSession().then(({ data }) => {
+      if (!active) return
+      setAuthUser(data.session?.user ?? null)
+      setAuthReady(true)
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuthUser(session?.user ?? null)
+      setAuthReady(true)
+    })
+    return () => { active = false; subscription.unsubscribe() }
+  }, [])
+  useEffect(() => {
+    if (!authUser || !workspaceReady || hasLocalProfile) return
+    const name = typeof authUser.user_metadata.display_name === 'string' && authUser.user_metadata.display_name.trim()
+      ? authUser.user_metadata.display_name.trim()
+      : authUser.email?.split('@')[0] ?? 'Folio creator'
+    const sample = makePortfolio('mina', 'Mina’s portfolio', 'A fully editable example portfolio', '#b8a1ff')
+    const nextWorkspace: LocalWorkspace = {
+      version: 1,
+      profile: { id: authUser.id, name, email: authUser.email ?? '', createdAt: new Date().toISOString() },
+      portfolios: [sample],
+      assets: [],
+      activePortfolioId: sample.id,
+    }
+    workspaceRef.current = nextWorkspace
+    setWorkspaceState(nextWorkspace)
+    setHasLocalProfile(true)
+    setSignedIn(true)
+    window.localStorage.setItem('folio-local-session', 'active')
+  }, [authUser, hasLocalProfile, workspaceReady])
   useEffect(() => {
     if (addTrayOpen) announcePanel('add-tray')
   }, [addTrayOpen])
@@ -454,19 +493,30 @@ function App() {
     else if (type in blockInfo) addBlock(type)
   }
   const siteName = portfolio.name === 'Mina’s portfolio' ? 'mina.studio' : portfolio.name
-  if (!workspaceReady) return <main className="local-account-loading">Loading your Folio workspace…</main>
+  const appSignedIn = signedIn || Boolean(authUser)
+  const signOut = () => {
+    window.localStorage.removeItem('folio-local-session')
+    setSignedIn(false)
+    setAuthUser(null)
+    setView('home')
+    void supabase?.auth.signOut()
+  }
+  if (!workspaceReady || !authReady) return <main className="local-account-loading">Loading your Folio workspace…</main>
   if (publicPortfolioId) {
     const publicPortfolio = portfolios.find(item => item.id === publicPortfolioId)
     return publicPortfolio?.publishedAt
       ? <PublishedPortfolio portfolio={publicPortfolio} />
       : <PublicPortfolioUnavailable />
   }
-  if (authMode) return <LocalAccountScreen mode={authMode} savedProfile={hasLocalProfile ? workspace.profile : null} onBack={() => setAuthMode(null)} onContinue={() => { window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} onCreate={(name, email) => { const sample = makePortfolio('mina', 'Mina’s portfolio', 'A fully editable example portfolio', '#b8a1ff'); const nextWorkspace = { version: 1 as const, profile: createLocalProfile(name, email), portfolios: [sample], assets: [], activePortfolioId: sample.id }; workspaceRef.current = nextWorkspace; setWorkspaceState(nextWorkspace); resetHistory(); setHasLocalProfile(true); window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} />
-  if (view === 'home' || !signedIn || !hasLocalProfile) return <HomeScreen isSignedIn={signedIn && hasLocalProfile} onStart={() => signedIn && hasLocalProfile ? setView('library') : setAuthMode(hasLocalProfile ? 'login' : 'signup')} onLogin={() => setAuthMode('login')} onCredits={() => setView('credits')} onPlans={() => setView('plans')} />
+  if (authMode) return supabaseIsConfigured
+    ? <AuthScreen mode={authMode} onBack={() => setAuthMode(null)} onModeChange={setAuthMode} />
+    : <LocalAccountScreen mode={authMode === 'login' ? 'login' : 'signup'} savedProfile={hasLocalProfile ? workspace.profile : null} onBack={() => setAuthMode(null)} onContinue={() => { window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} onCreate={(name, email) => { const sample = makePortfolio('mina', 'Mina’s portfolio', 'A fully editable example portfolio', '#b8a1ff'); const nextWorkspace = { version: 1 as const, profile: createLocalProfile(name, email), portfolios: [sample], assets: [], activePortfolioId: sample.id }; workspaceRef.current = nextWorkspace; setWorkspaceState(nextWorkspace); resetHistory(); setHasLocalProfile(true); window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} />
   if (view === 'credits') return <CreditsScreen onBack={() => setView('home')} />
   if (view === 'plans') return <PlansScreen onBack={() => setView('home')} onStart={() => setView('library')} />
-  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onAccount={() => setView('account')} onSignOut={() => { window.localStorage.removeItem('folio-local-session'); setSignedIn(false); setView('home') }} />
-  if (view === 'account') return <AccountSettings profile={workspace.profile} portfolioCount={portfolios.length} assetCount={assets.length} assetBytes={assets.reduce((total, asset) => total + Math.floor(asset.dataUrl.length * .75), 0)} onSave={updateProfile} onBack={() => setView('library')} onSignOut={() => { window.localStorage.removeItem('folio-local-session'); setSignedIn(false); setView('home') }} />
+  if (view === 'help') return <HelpCenter onBack={() => setView('home')} />
+  if (view === 'home' || !appSignedIn || !hasLocalProfile) return <HomeScreen isSignedIn={appSignedIn && hasLocalProfile} onStart={() => appSignedIn && hasLocalProfile ? setView('library') : setAuthMode(hasLocalProfile ? 'login' : 'signup')} onLogin={() => setAuthMode('login')} onCredits={() => setView('credits')} onPlans={() => setView('plans')} onHelp={() => setView('help')} />
+  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onAccount={() => setView('account')} onSignOut={signOut} />
+  if (view === 'account') return <AccountSettings profile={workspace.profile} portfolioCount={portfolios.length} assetCount={assets.length} assetBytes={assets.reduce((total, asset) => total + Math.floor(asset.dataUrl.length * .75), 0)} onSave={updateProfile} onBack={() => setView('library')} onSignOut={signOut} />
 
   const togglePreview = () => {
     if (!preview) {

@@ -1,0 +1,21 @@
+.auth-screen { min-height: 100vh; background: #f5f2ea; color: #292c25; }
+.auth-header { height: 74px; padding: 0 clamp(22px, 5vw, 76px); display: flex; align-items: center; border-bottom: 1px solid #ddd9cf; }
+.auth-header button { padding: 0; border: 0; background: transparent; color: inherit; font-size: 19px; font-weight: 700; letter-spacing: -1px; cursor: pointer; }
+.auth-header i { color: #ff6b4a; font-size: 14px; font-style: normal; }
+.auth-card { width: min(100% - 40px, 480px); margin: clamp(60px, 12vh, 125px) auto; padding: clamp(25px, 5vw, 45px); border: 1px solid #d5d0c4; border-radius: 8px; background: #fffefa; box-shadow: 0 20px 50px #3e3a2d14; }
+.auth-card > p { margin: 0 0 19px; color: #898379; font: 10px 'DM Mono', monospace; letter-spacing: .12em; }
+.auth-card h1 { margin: 0; white-space: pre-line; font: 600 clamp(43px, 6vw, 60px)/.9 'Playfair Display', Georgia, serif; letter-spacing: -.065em; }
+.auth-intro { display: block; margin: 26px 0; color: #696860; font-size: 14px; line-height: 1.55; }
+.auth-card form { display: grid; gap: 14px; }
+.auth-card label span { display: block; margin-bottom: 6px; color: #5f5e55; font-size: 11px; font-weight: 700; }
+.auth-card input { box-sizing: border-box; width: 100%; padding: 11px 12px; border: 1px solid #d8d3c8; border-radius: 5px; background: #fff; color: #292c25; font-size: 14px; outline-color: #ff6b4a; }
+.auth-primary { width: 100%; margin-top: 8px; padding: 13px 15px; border: 0; border-radius: 5px; background: #292c25; color: #fffefa; box-shadow: 0 4px 0 #55584e; font-size: 13px; font-weight: 700; cursor: pointer; }
+.auth-primary:disabled { cursor: wait; opacity: .72; }
+.auth-primary b { margin-left: 12px; color: #ff9d8c; }
+.auth-error, .auth-message { padding: 9px 10px; border-radius: 4px; font-size: 11px; line-height: 1.4; }
+.auth-error { background: #fff0ed; color: #b74737; }
+.auth-message { background: #eff7ef; color: #406f4b; }
+.auth-text-button { width: 100%; margin-top: 18px; padding: 0; border: 0; background: transparent; color: #5d5a52; font-size: 12px; font-weight: 700; cursor: pointer; }
+.auth-text-button.subtle { margin-top: 11px; color: #898379; font-weight: 500; }
+.auth-note { display: grid; gap: 5px; margin-top: 28px; padding: 13px; border-left: 2px solid #e4ba70; background: #fff8e8; color: #777168; font-size: 11px; line-height: 1.45; }
+.auth-note b { color: #5d584e; font-size: 11px; }

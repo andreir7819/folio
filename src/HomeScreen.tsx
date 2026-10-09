@@ -1,12 +1,12 @@
 import './home-screen.css'
 
-type Props = { isSignedIn?: boolean; onStart: () => void; onLogin: () => void; onCredits: () => void; onPlans: () => void }
+type Props = { isSignedIn?: boolean; onStart: () => void; onLogin: () => void; onCredits: () => void; onPlans: () => void; onHelp: () => void }
 
-export default function HomeScreen({ isSignedIn = false, onStart, onLogin, onCredits, onPlans }: Props) {
+export default function HomeScreen({ isSignedIn = false, onStart, onLogin, onCredits, onPlans, onHelp }: Props) {
   return <main className="folio-home">
     <header className="home-nav">
       <button className="home-wordmark" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}><i>✦</i> folio</button>
-      <div className="home-nav-actions">{isSignedIn ? <button className="home-signup" onClick={onStart}>Your portfolios</button> : <><button className="home-login" onClick={onLogin}>Log in</button><button className="home-signup" onClick={onStart}>Sign up</button></>}</div>
+      <div className="home-nav-actions"><button className="home-login" onClick={onHelp}>Help</button>{isSignedIn ? <button className="home-signup" onClick={onStart}>Your portfolios</button> : <><button className="home-login" onClick={onLogin}>Log in</button><button className="home-signup" onClick={onStart}>Sign up</button></>}</div>
     </header>
     <section className="home-hero">
       <p className="home-eyebrow">A PORTFOLIO BUILDER FOR PEOPLE WITH A POINT OF VIEW</p>
@@ -20,6 +20,6 @@ export default function HomeScreen({ isSignedIn = false, onStart, onLogin, onCre
       <div className="preview-canvas"><p>YOUR INTERNET CORNER</p><h2>A place to<br />make your work<br /><em>feel alive.</em></h2><div className="preview-orbit">✦</div><div className="preview-note">drag it<br />wherever<br />you want ↙</div><div className="preview-tool">✎ Edit&nbsp;&nbsp;&nbsp; ⧉ Duplicate&nbsp;&nbsp;&nbsp; Copy</div></div>
     </section>
     <section className="home-principles"><p>NOT ANOTHER WEBSITE BUILDER</p><div><h2>Make it yours.</h2><span>Freeform canvas pages, considered scroll pages, living details, and enough structure to keep the work in focus.</span></div><div><h2>Keep it human.</h2><span>Less “launch a brand.” More “this is what I make, and why I care about it.”</span></div></section>
-    <footer className="home-footer"><span>© folio</span><div><button onClick={onPlans}>Plans</button><button onClick={onCredits}>Credits</button><button onClick={onStart}>Start making ↗</button></div></footer>
+    <footer className="home-footer"><span>© folio</span><div><button onClick={onHelp}>Help</button><button onClick={onPlans}>Plans</button><button onClick={onCredits}>Credits</button><button onClick={onStart}>Start making ↗</button></div></footer>
   </main>
 }
