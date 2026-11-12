@@ -1,0 +1,16 @@
+.cloud-draft-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: .5rem;
+  font-size: .8rem;
+}
+
+.cloud-draft-status [role="alert"] {
+  max-width: 22rem;
+  color: #a22720;
+}
+
+.cloud-import {
+  margin-block: .75rem;
+}

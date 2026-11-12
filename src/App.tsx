@@ -25,6 +25,9 @@ import { fontStack } from './domain/fonts'
 import { pageBackgroundStyle } from './domain/pageStyle'
 import { supabase, supabaseIsConfigured } from './lib/supabase'
 import type { User } from '@supabase/supabase-js'
+import { supabaseCloudDraftRepository, toDraftSnapshot } from './cloudDrafts'
+import { useCloudDraftSave } from './useCloudDraftSave'
+import './cloud-drafts.css'
 
 export type { Asset, Block, Page, Portfolio } from './domain/types'
 
@@ -38,7 +41,38 @@ const makePortfolio = (id: string, name: string, description: string, color: str
 const makeBlankPortfolio = (id: string): Portfolio => ({ id, name: 'Untitled portfolio', description: 'A fresh place to show your work', color: '#f4c5a8', showPortfolioName: true, pages: [{ id: 'home', name: 'Home', slug: '', showHeader: true, showInNav: false, transition: 'lift', layout: 'canvas', background: defaultBackground(), blocks: [] }], homePageId: 'home', updated: 'just now' })
 const makePreviewWorkspace = (): LocalWorkspace => ({ version: 1, profile: { id: 'preview', name: 'Guest', email: '', createdAt: '' }, portfolios: [makePortfolio('mina', 'Mina’s portfolio', 'A fully editable example portfolio', '#b8a1ff')], assets: [], activePortfolioId: 'mina' })
 
+const cloudDrafts = supabase && import.meta.env.VITE_FOLIO_CLOUD_DRAFTS === 'true'
+  ? supabaseCloudDraftRepository(supabase)
+  : null
+
 function App() {
+  const [auth, setAuth] = useState<{ ready: boolean; user: User | null }>({ ready: !supabase, user: null })
+  const [publicView, setPublicView] = useState(() => Boolean(publicPortfolioIdFromHash()))
+
+  useEffect(() => {
+    if (!supabase) return
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setAuth({ ready: true, user: session?.user ?? null })
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  useEffect(() => {
+    if (!cloudDrafts) return
+    const update = () => setPublicView(Boolean(publicPortfolioIdFromHash()))
+    window.addEventListener('hashchange', update)
+    return () => window.removeEventListener('hashchange', update)
+  }, [])
+
+  const ownerId = cloudDrafts && !publicView ? auth.user?.id : undefined
+  const scope = ownerId ?? (cloudDrafts && publicView ? 'public' : 'local')
+  return <WorkspaceApp key={scope} authUser={scope === 'public' ? null : auth.user} authReady={auth.ready} ownerId={ownerId} />
+}
+
+function WorkspaceApp({ authUser, authReady, ownerId }: { authUser: User | null; authReady: boolean; ownerId?: string }) {
+  const cloud = ownerId ? cloudDrafts : null
+  // The keyed editor keeps its initial identity through token refreshes.
+  const [cloudUser] = useState(() => ownerId ? authUser : null)
   const [workspace, setWorkspaceState] = useState<LocalWorkspace>(makePreviewWorkspace)
   const workspaceRef = useRef(workspace)
   const historyRef = useRef<{ past: LocalWorkspace[]; future: LocalWorkspace[] }>({ past: [], future: [] })
@@ -48,10 +82,15 @@ function App() {
   const [hasLocalProfile, setHasLocalProfile] = useState(false)
   const [signedIn, setSignedIn] = useState(() => window.localStorage.getItem('folio-local-session') === 'active')
   const [authMode, setAuthMode] = useState<'signup' | 'login' | 'reset' | null>(null)
-  const [authUser, setAuthUser] = useState<User | null>(null)
-  const [authReady, setAuthReady] = useState(!supabaseIsConfigured)
+  const [cloudLoaded, setCloudLoaded] = useState<{ workspace: LocalWorkspace; revision: string | null } | null>(null)
+  const [localImport, setLocalImport] = useState<LocalWorkspace | null>(null)
+  const [cloudLoadError, setCloudLoadError] = useState(false)
+  const [loadAttempt, setLoadAttempt] = useState(0)
+  const [signingOut, setSigningOut] = useState(false)
+  const [signOutError, setSignOutError] = useState(false)
+  const cloudSave = useCloudDraftSave(cloud, ownerId, workspace, cloudLoaded)
   const [saveState, setSaveState] = useState<'loading' | 'saved' | 'saving' | 'error'>('loading')
-  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'help' | 'library' | 'account' | 'builder'>('home')
+  const [view, setView] = useState<'home' | 'credits' | 'plans' | 'help' | 'library' | 'account' | 'builder'>(ownerId ? 'library' : 'home')
   const [pageId, setPageId] = useState('home')
   const [selectedId, setSelectedId] = useState('')
   const [selectedIds, setSelectedIds] = useState<string[]>([])
@@ -67,21 +106,7 @@ function App() {
     return () => window.removeEventListener(PANEL_EVENT, closeTray)
   }, [])
   useEffect(() => {
-    if (!supabase) return
-    let active = true
-    void supabase.auth.getSession().then(({ data }) => {
-      if (!active) return
-      setAuthUser(data.session?.user ?? null)
-      setAuthReady(true)
-    })
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setAuthUser(session?.user ?? null)
-      setAuthReady(true)
-    })
-    return () => { active = false; subscription.unsubscribe() }
-  }, [])
-  useEffect(() => {
-    if (!authUser || !workspaceReady || hasLocalProfile) return
+    if (ownerId || !authUser || !workspaceReady || hasLocalProfile) return
     const name = typeof authUser.user_metadata.display_name === 'string' && authUser.user_metadata.display_name.trim()
       ? authUser.user_metadata.display_name.trim()
       : authUser.email?.split('@')[0] ?? 'Folio creator'
@@ -98,7 +123,7 @@ function App() {
     setHasLocalProfile(true)
     setSignedIn(true)
     window.localStorage.setItem('folio-local-session', 'active')
-  }, [authUser, hasLocalProfile, workspaceReady])
+  }, [authUser, hasLocalProfile, ownerId, workspaceReady])
   useEffect(() => {
     if (addTrayOpen) announcePanel('add-tray')
   }, [addTrayOpen])
@@ -121,6 +146,7 @@ function App() {
     return () => window.removeEventListener('hashchange', readHash)
   }, [])
   useEffect(() => {
+    if (ownerId) return
     let active = true
     loadLocalWorkspace().then(saved => {
       if (!active) return
@@ -129,16 +155,43 @@ function App() {
       setSaveState('saved')
     }).catch(() => { if (active) { setWorkspaceReady(true); setSaveState('error') } })
     return () => { active = false }
-  }, [])
+  }, [ownerId])
   useEffect(() => {
-    if (!workspaceReady || !hasLocalProfile) return
+    if (!cloud || !ownerId || !cloudUser) return
+    const controller = new AbortController()
+    const user = cloudUser
+    const { signal } = controller
+    void cloud.load(ownerId, signal).then(saved => {
+      if (signal.aborted) return
+      const displayName = user.user_metadata.display_name
+      const profile = {
+        id: ownerId,
+        name: typeof displayName === 'string' && displayName.trim() ? displayName : user.email?.split('@')[0] ?? 'Folio creator',
+        email: user.email ?? '',
+        createdAt: user.created_at,
+      }
+      const snapshot = saved?.snapshot ?? { version: 1 as const, portfolios: [], assets: [], activePortfolioId: '' }
+      const nextWorkspace: LocalWorkspace = { ...snapshot, profile }
+      workspaceRef.current = nextWorkspace
+      setWorkspaceState(nextWorkspace)
+      setCloudLoaded({ workspace: nextWorkspace, revision: saved?.revision ?? null })
+      setHasLocalProfile(true)
+      setWorkspaceReady(true)
+      if (!saved) void loadLocalWorkspace().then(local => {
+        if (!signal.aborted && local?.portfolios.length) setLocalImport(local)
+      }).catch(() => undefined)
+    }).catch(() => { if (!signal.aborted) setCloudLoadError(true) })
+    return () => controller.abort()
+  }, [cloud, cloudUser, ownerId, loadAttempt])
+  useEffect(() => {
+    if (ownerId || !workspaceReady || !hasLocalProfile) return
     let active = true
     const timer = window.setTimeout(() => {
       setSaveState('saving')
       saveLocalWorkspace(workspace).then(() => { if (active) setSaveState('saved') }).catch(() => { if (active) setSaveState('error') })
     }, 350)
     return () => { active = false; window.clearTimeout(timer) }
-  }, [workspace, workspaceReady, hasLocalProfile])
+  }, [workspace, workspaceReady, hasLocalProfile, ownerId])
   const portfolios = workspace.portfolios
   const assets = workspace.assets
   const activePortfolioId = workspace.activePortfolioId
@@ -192,13 +245,14 @@ function App() {
     setWorkspaceState(next)
   }
   const setActivePortfolioId = (id: string) => {
+    if (workspaceRef.current.activePortfolioId === id) return
     const next = { ...workspaceRef.current, activePortfolioId: id }
     workspaceRef.current = next
     setWorkspaceState(next)
   }
   const portfolio = portfolios.find(item => item.id === activePortfolioId) ?? portfolios[0] ?? makeBlankPortfolio('empty-portfolio')
   const pages = portfolio.pages
-  const page = pages.find(item => item.id === pageId)!
+  const page = pages.find(item => item.id === pageId) ?? pages[0]
   const selected = page.blocks.find(item => item.id === selectedId)
   const isCanvas = page.layout === 'canvas'
   const editingOverrideKey = rangeSpecs[responsiveRange].overrideKey
@@ -225,10 +279,16 @@ function App() {
   }, [preview, page.id, page.blocks])
 
   useEffect(() => {
-    assets.filter(asset => asset.kind === 'font' && asset.family).forEach(asset => {
-      const face = new FontFace(asset.family!, `url(${asset.dataUrl})`)
-      face.load().then(loaded => document.fonts.add(loaded)).catch(() => undefined)
-    })
+    let active = true
+    const faces = assets.filter(asset => asset.kind === 'font' && asset.family)
+      .map(asset => new FontFace(asset.family!, `url(${asset.dataUrl})`))
+    for (const face of faces) {
+      void face.load().then(loaded => { if (active) document.fonts.add(loaded) }).catch(() => undefined)
+    }
+    return () => {
+      active = false
+      for (const face of faces) document.fonts.delete(face)
+    }
   }, [assets])
 
   const updatePortfolio = (fn: (item: Portfolio) => Portfolio) => setPortfolios(items => items.map(item => item.id === activePortfolioId ? fn(item) : item))
@@ -494,13 +554,35 @@ function App() {
   }
   const siteName = portfolio.name === 'Mina’s portfolio' ? 'mina.studio' : portfolio.name
   const appSignedIn = signedIn || Boolean(authUser)
-  const signOut = () => {
-    window.localStorage.removeItem('folio-local-session')
-    setSignedIn(false)
-    setAuthUser(null)
-    setView('home')
-    void supabase?.auth.signOut()
+  const signOut = async () => {
+    if (signingOut) return
+    if (cloudSave.unsaved && !window.confirm('Sign out with unsaved cloud draft changes?')) return
+    setSignOutError(false)
+    setSigningOut(true)
+    try {
+      const result = await supabase?.auth.signOut({ scope: 'local' })
+      if (result?.error) throw result.error
+      window.localStorage.removeItem('folio-local-session')
+      setSignedIn(false)
+      setView('home')
+    } catch {
+      setSignOutError(true)
+    } finally {
+      setSigningOut(false)
+    }
   }
+  const importLocalWork = () => {
+    if (!localImport || workspaceRef.current !== cloudLoaded?.workspace || cloudLoaded.revision) return
+    const confirmed = window.confirm('Copy this browser’s portfolios and assets into your private cloud drafts? The originals will stay on this device.')
+    if (confirmed) commitWorkspace({ ...toDraftSnapshot(localImport), profile: workspaceRef.current.profile })
+  }
+  const cloudStatus = cloud && <CloudDraftStatus status={cloudSave.status} failure={cloudSave.failure} onRetry={cloudSave.retry} />
+  if (cloudLoadError) return <main className="local-account-loading"><div role="alert">
+    <p>Could not load your private cloud drafts.</p>
+    <button type="button" onClick={() => { setCloudLoadError(false); setLoadAttempt(value => value + 1) }}>Try again</button>
+    <button type="button" onClick={signOut} disabled={signingOut}>Sign out</button>
+    {signOutError && <p>Could not sign out. Try again.</p>}
+  </div></main>
   if (!workspaceReady || !authReady) return <main className="local-account-loading">Loading your Folio workspace…</main>
   if (publicPortfolioId) {
     const publicPortfolio = portfolios.find(item => item.id === publicPortfolioId)
@@ -509,13 +591,14 @@ function App() {
       : <PublicPortfolioUnavailable />
   }
   if (authMode) return supabaseIsConfigured
-    ? <AuthScreen mode={authMode} onBack={() => setAuthMode(null)} onModeChange={setAuthMode} />
+    ? <AuthScreen mode={authMode} onBack={() => setAuthMode(null)} onModeChange={setAuthMode} privateDraftsEnabled={Boolean(cloudDrafts)} />
     : <LocalAccountScreen mode={authMode === 'login' ? 'login' : 'signup'} savedProfile={hasLocalProfile ? workspace.profile : null} onBack={() => setAuthMode(null)} onContinue={() => { window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} onCreate={(name, email) => { const sample = makePortfolio('mina', 'Mina’s portfolio', 'A fully editable example portfolio', '#b8a1ff'); const nextWorkspace = { version: 1 as const, profile: createLocalProfile(name, email), portfolios: [sample], assets: [], activePortfolioId: sample.id }; workspaceRef.current = nextWorkspace; setWorkspaceState(nextWorkspace); resetHistory(); setHasLocalProfile(true); window.localStorage.setItem('folio-local-session', 'active'); setSignedIn(true); setAuthMode(null); setView('library') }} />
   if (view === 'credits') return <CreditsScreen onBack={() => setView('home')} />
   if (view === 'plans') return <PlansScreen onBack={() => setView('home')} onStart={() => setView('library')} />
   if (view === 'help') return <HelpCenter onBack={() => setView('home')} />
   if (view === 'home' || !appSignedIn || !hasLocalProfile) return <HomeScreen isSignedIn={appSignedIn && hasLocalProfile} onStart={() => appSignedIn && hasLocalProfile ? setView('library') : setAuthMode(hasLocalProfile ? 'login' : 'signup')} onLogin={() => setAuthMode('login')} onCredits={() => setView('credits')} onPlans={() => setView('plans')} onHelp={() => setView('help')} />
-  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onAccount={() => setView('account')} onSignOut={signOut} />
+  if (view === 'library') return <PortfolioLibrary portfolios={portfolios} profile={workspace.profile} onOpen={openPortfolio} onCreate={createPortfolio} onDelete={deletePortfolio} onAccount={() => setView('account')} onSignOut={signOut} cloud={Boolean(cloud)} cloudStatus={cloudStatus} signOutError={signOutError} onImport={localImport && !cloudLoaded?.revision && workspace === cloudLoaded?.workspace ? importLocalWork : undefined} />
+  if (view === 'account' && cloud) return <main className="local-account-loading"><div><h1>Folio account</h1><p>{workspace.profile.name} · {workspace.profile.email}</p>{cloudStatus}<button type="button" onClick={() => setView('library')}>Back to portfolios</button><button type="button" onClick={signOut} disabled={signingOut}>Sign out</button>{signOutError && <p role="alert">Could not sign out. Try again.</p>}</div></main>
   if (view === 'account') return <AccountSettings profile={workspace.profile} portfolioCount={portfolios.length} assetCount={assets.length} assetBytes={assets.reduce((total, asset) => total + Math.floor(asset.dataUrl.length * .75), 0)} onSave={updateProfile} onBack={() => setView('library')} onSignOut={signOut} />
 
   const togglePreview = () => {
@@ -531,17 +614,24 @@ function App() {
     }
     setPreview(value => !value)
   }
-  return <main className="studio"><header className="studio-bar"><button className="brand brand-button" onClick={() => setView('library')}><i>✦</i> folio</button><div className="bar-center"><button className={`top-action add-action ${addTrayOpen ? 'active' : ''}`} onClick={() => { setAddTrayView('blocks'); setAddTrayOpen(open => !open) }}><i>+</i> Add <span>⌄</span></button>{!preview && <Drawer label="Layers" icon="☷"><LayerList blocks={page.blocks} selectedId={selectedId} canvas={isCanvas} onSelect={editBlock} onReorder={reorderLayers} /></Drawer>}<Drawer label="Pages" icon="▱"><p className="drawer-kicker">Your portfolio</p>{pages.map((item, index) => <button key={item.id} className={`drawer-page ${item.id === pageId ? 'current' : ''}`} onClick={() => choosePage(item)}><i className={`folder-dot color-${index % 4}`} />{item.name}<span>{item.layout}</span></button>)}<button className="new-page" onClick={addPage}>+ New scroll page</button></Drawer>{!preview && <Drawer label="Settings" icon="⚙"><SettingsPanel portfolio={portfolio} page={page} isHome={pageId === portfolio.homePageId} onPortfolioChange={patch => updatePortfolio(item => ({ ...item, ...patch }))} onPageChange={updatePage} onSetHome={() => updatePortfolio(item => ({ ...item, homePageId: pageId }))} onSetLayout={setLayout} /></Drawer>} {!preview && <Drawer label="More" icon="•••" className="more-drawer"><p className="drawer-kicker">A little help</p><button className="drawer-item tutorial-menu-item" onClick={() => { announcePanel('tutorial'); setTutorialOpen(true) }}><b>?</b><span><strong>Take the tutorial</strong><small>A quick tour of Folio’s essentials</small></span><em>↗</em></button></Drawer>}<span className="bar-divider" />{!preview && <div className="history-controls" role="group" aria-label="Edit history"><button type="button" onClick={undo} disabled={!history.canUndo} title="Undo (⌘Z)" aria-label="Undo">↶</button><button type="button" onClick={redo} disabled={!history.canRedo} title="Redo (⌘⇧Z)" aria-label="Redo">↷</button></div>}</div><div className="bar-actions"><span className={`saved ${saveState === 'error' ? 'save-error' : ''}`}>● {saveState === 'saving' ? 'saving' : saveState === 'error' ? 'save failed' : 'saved locally'}</span>{selected && !preview && <Drawer label="Inspector" icon="⌘" align="right" forceOpen={inspectorOpen}><Inspector block={selected} pages={pages} assets={assets} onChange={patch => updateBlock(selected.id, patch)} onDelete={() => deleteBlock(selected.id)} onLayerMove={direction => moveLayer(selected.id, direction)} onAnchor={anchorCanvasBlock} responsiveRange={responsiveRange} onResponsiveRange={setResponsiveTarget} onResponsiveChange={patch => { if (editingOverrideKey) updateResponsiveBlock(selected.id, editingOverrideKey, patch) }} onClearResponsive={() => { if (editingOverrideKey) clearResponsiveBlock(selected.id, editingOverrideKey) }} /></Drawer>}<button className="preview" onClick={togglePreview}>{preview ? 'Edit site' : 'Preview'}</button>{!preview && <Drawer label={portfolio.publishedAt ? 'Published' : 'Publish'} icon="↗" align="right" className="publish-drawer"><PublishPanel portfolio={portfolio} onPublish={() => updatePortfolio(item => ({ ...item, publishedAt: new Date().toISOString(), updated: 'just now' }))} onUnpublish={() => updatePortfolio(item => ({ ...item, publishedAt: undefined, updated: 'just now' }))} onOpen={() => { window.location.hash = `/p/${portfolio.id}` }} /></Drawer>}</div></header>{!preview && tutorialOpen && <Tutorial onClose={() => setTutorialOpen(false)} />}{!preview && <section className="workspace-context"><span>{isCanvas ? 'Canvas page' : 'Scroll page'} · <b>{page.name}</b></span><div className="device-switcher workspace-device-switcher" role="group" aria-label="Responsive editing device"><span>Editing · {rangeSpecs[responsiveRange].label} · {rangeSpecs[responsiveRange].resolution} preview · {rangeSpecs[responsiveRange].detail}</span>{(Object.keys(rangeSpecs) as ResponsiveRange[]).map(range => <button type="button" key={range} className={responsiveRange === range ? 'active' : ''} onClick={() => setResponsiveTarget(range)}>{rangeSpecs[range].label}</button>)}</div></section>}
+  return <main className="studio"><header className="studio-bar"><button className="brand brand-button" onClick={() => setView('library')}><i>✦</i> folio</button><div className="bar-center"><button className={`top-action add-action ${addTrayOpen ? 'active' : ''}`} onClick={() => { setAddTrayView('blocks'); setAddTrayOpen(open => !open) }}><i>+</i> Add <span>⌄</span></button>{!preview && <Drawer label="Layers" icon="☷"><LayerList blocks={page.blocks} selectedId={selectedId} canvas={isCanvas} onSelect={editBlock} onReorder={reorderLayers} /></Drawer>}<Drawer label="Pages" icon="▱"><p className="drawer-kicker">Your portfolio</p>{pages.map((item, index) => <button key={item.id} className={`drawer-page ${item.id === pageId ? 'current' : ''}`} onClick={() => choosePage(item)}><i className={`folder-dot color-${index % 4}`} />{item.name}<span>{item.layout}</span></button>)}<button className="new-page" onClick={addPage}>+ New scroll page</button></Drawer>{!preview && <Drawer label="Settings" icon="⚙"><SettingsPanel portfolio={portfolio} page={page} isHome={pageId === portfolio.homePageId} onPortfolioChange={patch => updatePortfolio(item => ({ ...item, ...patch }))} onPageChange={updatePage} onSetHome={() => updatePortfolio(item => ({ ...item, homePageId: pageId }))} onSetLayout={setLayout} /></Drawer>} {!preview && <Drawer label="More" icon="•••" className="more-drawer"><p className="drawer-kicker">A little help</p><button className="drawer-item tutorial-menu-item" onClick={() => { announcePanel('tutorial'); setTutorialOpen(true) }}><b>?</b><span><strong>Take the tutorial</strong><small>A quick tour of Folio’s essentials</small></span><em>↗</em></button></Drawer>}<span className="bar-divider" />{!preview && <div className="history-controls" role="group" aria-label="Edit history"><button type="button" onClick={undo} disabled={!history.canUndo} title="Undo (⌘Z)" aria-label="Undo">↶</button><button type="button" onClick={redo} disabled={!history.canRedo} title="Redo (⌘⇧Z)" aria-label="Redo">↷</button></div>}</div><div className="bar-actions">{cloud ? cloudStatus : <span className={`saved ${saveState === 'error' ? 'save-error' : ''}`}>● {saveState === 'saving' ? 'saving' : saveState === 'error' ? 'save failed' : 'saved locally'}</span>}{selected && !preview && <Drawer label="Inspector" icon="⌘" align="right" forceOpen={inspectorOpen}><Inspector block={selected} pages={pages} assets={assets} onChange={patch => updateBlock(selected.id, patch)} onDelete={() => deleteBlock(selected.id)} onLayerMove={direction => moveLayer(selected.id, direction)} onAnchor={anchorCanvasBlock} responsiveRange={responsiveRange} onResponsiveRange={setResponsiveTarget} onResponsiveChange={patch => { if (editingOverrideKey) updateResponsiveBlock(selected.id, editingOverrideKey, patch) }} onClearResponsive={() => { if (editingOverrideKey) clearResponsiveBlock(selected.id, editingOverrideKey) }} /></Drawer>}<button className="preview" onClick={togglePreview}>{preview ? 'Edit site' : 'Preview'}</button>{!preview && !cloud && <Drawer label={portfolio.publishedAt ? 'Published' : 'Publish'} icon="↗" align="right" className="publish-drawer"><PublishPanel portfolio={portfolio} onPublish={() => updatePortfolio(item => ({ ...item, publishedAt: new Date().toISOString(), updated: 'just now' }))} onUnpublish={() => updatePortfolio(item => ({ ...item, publishedAt: undefined, updated: 'just now' }))} onOpen={() => { window.location.hash = `/p/${portfolio.id}` }} /></Drawer>}</div></header>{!preview && tutorialOpen && <Tutorial onClose={() => setTutorialOpen(false)} />}{!preview && <section className="workspace-context"><span>{isCanvas ? 'Canvas page' : 'Scroll page'} · <b>{page.name}</b></span><div className="device-switcher workspace-device-switcher" role="group" aria-label="Responsive editing device"><span>Editing · {rangeSpecs[responsiveRange].label} · {rangeSpecs[responsiveRange].resolution} preview · {rangeSpecs[responsiveRange].detail}</span>{(Object.keys(rangeSpecs) as ResponsiveRange[]).map(range => <button type="button" key={range} className={responsiveRange === range ? 'active' : ''} onClick={() => setResponsiveTarget(range)}>{rangeSpecs[range].label}</button>)}</div></section>}
     <aside className={`add-tray ${addTrayOpen ? 'open' : ''}`}><div className="tray-heading"><div><strong>{addTrayView === 'assets' ? 'Your asset shelf' : 'Building blocks'}</strong><span>{addTrayView === 'assets' ? 'Keep your images and type close to the work.' : `Drag onto your ${isCanvas ? 'canvas' : 'page'} or click to add`}</span></div><div className="tray-view-tabs" role="tablist"><button type="button" className={addTrayView === 'blocks' ? 'active' : ''} onClick={() => setAddTrayView('blocks')}>▦ Blocks</button><button type="button" className={addTrayView === 'assets' ? 'active' : ''} onClick={() => setAddTrayView('assets')}>▤ Assets <i>{assets.length}</i></button></div><button onClick={() => setAddTrayOpen(false)}>Close ×</button></div><div className="tray-items">{addTrayView === 'blocks' ? <>{trayGroups.map(group => <section className="tray-section" key={group.title}><header><strong>{group.title}</strong><small>{group.note}</small></header><div className="tray-section-items">{group.types.map(type => <button draggable key={type} className="tray-card" onClick={() => addBlock(type)} onDragStart={event => event.dataTransfer.setData('application/x-folio-block', type)}><b>{blockInfo[type].icon}</b><strong>{blockInfo[type].label}</strong><small>{blockInfo[type].description}</small><em>Drag</em></button>)}</div></section>)}{copiedBlock && <section className="tray-section tray-paste"><header><strong>Clipboard</strong><small>Use the block you copied.</small></header><div className="tray-section-items"><button className="tray-card paste-card" onClick={pasteCopiedBlock}><b>▣</b><strong>Paste block</strong><small>Use your copied {blockInfo[copiedBlock.type].label.toLowerCase()}</small></button></div></section>}</> : <AssetShelf embedded assets={assets} selected={selected} onAdd={addAsset} onUseImage={useImageAsset} onUseFont={useFontAsset} onClose={() => setAddTrayView('blocks')} />}</div></aside>
     {!preview && <div className="file-tabs">{pages.map((item, index) => <button key={item.id} className={`file-tab ${item.id === pageId ? 'active' : ''} file-${index % 4}`} onClick={() => choosePage(item)}><span>●</span>{item.name}</button>)}<button className="tab-add" onClick={addPage}>+</button></div>}
     <section className={`site-stage ${preview ? `previewing device-${rangeSpecs[responsiveRange].frame}` : `editing device-${rangeSpecs[responsiveRange].frame}`}`}><article key={`${page.id}-${preview ? `preview-${previewRun}` : 'editor'}`} className={`site ${page.showHeader ? '' : 'site-without-header'}`} style={pageBackgroundStyle(page.background)}>{page.showHeader && <nav className={`site-nav nav-transition-${page.transition}`}>{portfolio.showPortfolioName && <button className="site-brand" onClick={() => choosePage(pages.find(item => item.id === portfolio.homePageId) ?? page)}>{siteName}</button>}<div>{pages.filter(item => item.showInNav).map(item => <button className={item.id === pageId ? 'current' : ''} key={item.id} onClick={() => choosePage(item)}>{item.name}</button>)}</div><span className="menu-mark">☼</span></nav>}<div className={`site-content page-transition-${page.transition} page-layout-${page.layout} ${draggingBlockId || resizingShape ? 'is-dragging' : ''}`} onPointerMove={event => { moveCanvasBlock(event); resizeCanvasShape(event) }} onPointerUp={endCanvasMove} onPointerCancel={endCanvasMove} onDragOver={event => event.preventDefault()} onDrop={dropOnPage} onClick={event => { if (!preview && event.target === event.currentTarget) clearSelection() }}>{page.blocks.map(block => <BlockView key={block.id} block={block} canvas={isCanvas} preview={preview} range={responsiveRange} active={!preview && selectedIds.includes(block.id)} onClick={() => !preview && selectBlock(block.id)} onChange={patch => updateBlock(block.id, patch)} onEdit={() => editBlock(block.id)} onDuplicate={() => duplicateBlock(block.id)} onCopy={() => setCopiedBlock(block)} onDelete={() => deleteBlock(block.id)} onNavigate={targetId => choosePage(pages.find(item => item.id === targetId) ?? page)} onMoveStart={event => startCanvasMove(event, block.id)} onResizeStart={(event, corner) => startShapeResize(event, block.id, corner)} />)}{!preview && !isCanvas && <button className="inline-add" onClick={() => addBlock('text')}>+ add section</button>}{!preview && isCanvas && page.blocks.length === 0 && <p className="canvas-hint">Shift-click blocks to select more than one, then drag them together.</p>}</div><footer className={`site-footer ${isCanvas ? 'canvas-footer' : ''}`}><span>folio</span></footer></article></section>
   </main>
 }
 
-function PortfolioLibrary({ portfolios, profile, onOpen, onCreate, onDelete, onAccount, onSignOut }: { portfolios: Portfolio[]; profile: LocalWorkspace['profile']; onOpen: (item: Portfolio) => void; onCreate: () => void; onDelete: (id: string) => void; onAccount: () => void; onSignOut: () => void }) {
+function CloudDraftStatus({ status, failure, onRetry }: { status: 'saving' | 'saved' | 'error'; failure: string; onRetry: () => void }) {
+  return <div className="cloud-draft-status">
+    <span role="status">{status === 'saving' ? 'Saving private draft…' : status === 'error' ? 'Cloud save failed' : 'Cloud drafts up to date'}</span>
+    {failure && <><span role="alert">{failure}</span><button type="button" onClick={onRetry}>Retry save</button></>}
+  </div>
+}
+
+function PortfolioLibrary({ portfolios, profile, onOpen, onCreate, onDelete, onAccount, onSignOut, cloud, cloudStatus, signOutError, onImport }: { cloud?: boolean; cloudStatus?: ReactNode; signOutError?: boolean; onImport?: () => void; portfolios: Portfolio[]; profile: LocalWorkspace['profile']; onOpen: (item: Portfolio) => void; onCreate: () => void; onDelete: (id: string) => void; onAccount: () => void; onSignOut: () => void }) {
   const limitReached = portfolios.length >= 3
   const [pendingDeletion, setPendingDeletion] = useState<Portfolio | null>(null)
-  return <main className="library-screen"><header className="library-header"><div className="brand"><i>✦</i> folio</div><div className="library-account"><button className="library-account-profile" onClick={onAccount}>{profile.name} <span>Account settings</span></button><button onClick={onSignOut}>Sign out</button></div></header><section className="library-content"><p className="library-eyebrow">YOUR PORTFOLIOS · FREE PLAN {portfolios.length}/3</p><h1>Every body of work<br />deserves its own home.</h1><p className="library-intro">This browser saves your work automatically. Open a portfolio to keep shaping it, or start a fresh new world.</p><div className="portfolio-grid">{portfolios.map(item => <article className="portfolio-card" key={item.id}><button className="portfolio-open" onClick={() => onOpen(item)} aria-label={`Open ${item.name}`}><div className="portfolio-cover" style={{ background: `linear-gradient(135deg, ${item.color}, #fff0cf)` }}><span>✦</span><small>OPEN ↗</small></div><div><strong>{item.name}</strong><p>{item.description}</p><span>Saved on this device</span></div></button><button className="portfolio-delete" type="button" aria-label={`Delete ${item.name}`} title="Delete portfolio" onClick={() => setPendingDeletion(item)}>⌫</button></article>)}<button className="new-portfolio-card" onClick={onCreate} disabled={limitReached}><span className="new-plus">+</span><strong>{limitReached ? 'Your free shelf is full' : 'Make a new portfolio'}</strong><small>{limitReached ? 'Free includes up to 3 portfolios' : `${3 - portfolios.length} free portfolio${3 - portfolios.length === 1 ? '' : 's'} left`}</small></button></div></section>{pendingDeletion && <div className="delete-dialog-backdrop" role="presentation" onMouseDown={() => setPendingDeletion(null)}><section className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-portfolio-title" aria-describedby="delete-portfolio-description" onMouseDown={event => event.stopPropagation()}><span className="delete-dialog-icon">⌫</span><p>DELETE PORTFOLIO</p><h2 id="delete-portfolio-title">Delete “{pendingDeletion.name}”?</h2><span id="delete-portfolio-description">This removes the portfolio and all of its pages from this browser. It can’t be undone.</span><div><button type="button" onClick={() => setPendingDeletion(null)}>Keep it</button><button className="confirm-delete" type="button" onClick={() => { onDelete(pendingDeletion.id); setPendingDeletion(null) }}>Delete portfolio</button></div></section></div>}</main>
+  return <main className="library-screen"><header className="library-header"><div className="brand"><i>✦</i> folio</div><div className="library-account"><button className="library-account-profile" onClick={onAccount}>{profile.name} <span>Account settings</span></button><button onClick={onSignOut}>Sign out</button></div></header><section className="library-content"><p className="library-eyebrow">YOUR PORTFOLIOS · FREE PLAN {portfolios.length}/3</p><h1>Every body of work<br />deserves its own home.</h1><p className="library-intro">{cloud ? 'Your drafts save privately to your Folio account.' : 'This browser saves your work automatically. Open a portfolio to keep shaping it, or start a fresh new world.'}</p>{cloudStatus}{signOutError && <p role="alert">Could not sign out. Try again.</p>}{onImport && <button className="cloud-import" type="button" onClick={onImport}>Copy portfolios from this browser</button>}<div className="portfolio-grid">{portfolios.map(item => <article className="portfolio-card" key={item.id}><button className="portfolio-open" onClick={() => onOpen(item)} aria-label={`Open ${item.name}`}><div className="portfolio-cover" style={{ background: `linear-gradient(135deg, ${item.color}, #fff0cf)` }}><span>✦</span><small>OPEN ↗</small></div><div><strong>{item.name}</strong><p>{item.description}</p><span>{cloud ? 'Private cloud draft' : 'Saved on this device'}</span></div></button><button className="portfolio-delete" type="button" aria-label={`Delete ${item.name}`} title="Delete portfolio" onClick={() => setPendingDeletion(item)}>⌫</button></article>)}<button className="new-portfolio-card" onClick={onCreate} disabled={limitReached}><span className="new-plus">+</span><strong>{limitReached ? 'Your free shelf is full' : 'Make a new portfolio'}</strong><small>{limitReached ? 'Free includes up to 3 portfolios' : `${3 - portfolios.length} free portfolio${3 - portfolios.length === 1 ? '' : 's'} left`}</small></button></div></section>{pendingDeletion && <div className="delete-dialog-backdrop" role="presentation" onMouseDown={() => setPendingDeletion(null)}><section className="delete-dialog" role="alertdialog" aria-modal="true" aria-labelledby="delete-portfolio-title" aria-describedby="delete-portfolio-description" onMouseDown={event => event.stopPropagation()}><span className="delete-dialog-icon">⌫</span><p>DELETE PORTFOLIO</p><h2 id="delete-portfolio-title">Delete “{pendingDeletion.name}”?</h2><span id="delete-portfolio-description">{cloud ? 'This removes the private draft and all of its pages from your account.' : 'This removes the portfolio and all of its pages from this browser.'} It can’t be undone.</span><div><button type="button" onClick={() => setPendingDeletion(null)}>Keep it</button><button className="confirm-delete" type="button" onClick={() => { onDelete(pendingDeletion.id); setPendingDeletion(null) }}>Delete portfolio</button></div></section></div>}</main>
 }
 function Tutorial({ onClose }: { onClose: () => void }) {
   const steps = [

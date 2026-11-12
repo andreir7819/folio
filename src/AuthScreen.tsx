@@ -6,13 +6,14 @@ type Mode = 'signup' | 'login' | 'reset'
 
 type Props = {
   mode: Mode
+  privateDraftsEnabled: boolean
   onBack: () => void
   onModeChange: (mode: Mode) => void
 }
 
 const validEmail = (email: string) => /^\S+@\S+\.\S+$/.test(email)
 
-export default function AuthScreen({ mode, onBack, onModeChange }: Props) {
+export default function AuthScreen({ mode, privateDraftsEnabled, onBack, onModeChange }: Props) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -70,7 +71,9 @@ export default function AuthScreen({ mode, onBack, onModeChange }: Props) {
   const title = isReset ? 'Get back to\nyour work.' : isSignup ? 'Make a home\nfor your work.' : 'Pick up where\nyou left off.'
   const intro = isReset
     ? 'We’ll send a secure password-reset link to your email address.'
-    : isSignup
+    : privateDraftsEnabled
+      ? 'Sign in to save private drafts to your Folio account.'
+      : isSignup
       ? 'Your account is secured by Supabase. Portfolio syncing comes next; your current work remains safely saved in this browser.'
       : 'Sign in to your Folio account. Your existing local work stays right where it is while cloud sync is being built.'
 
@@ -90,7 +93,7 @@ export default function AuthScreen({ mode, onBack, onModeChange }: Props) {
       </form>
       {!isReset && <button type="button" className="auth-text-button" onClick={() => changeMode(isSignup ? 'login' : 'signup')}>{isSignup ? 'Already have an account? Sign in' : 'New to Folio? Create an account'}</button>}
       {!isSignup && <button type="button" className="auth-text-button subtle" onClick={() => changeMode(isReset ? 'login' : 'reset')}>{isReset ? 'Back to sign in' : 'Forgot your password?'}</button>}
-      <aside className="auth-note"><b>✦ A careful transition</b><span>Accounts are live. Cloud portfolio storage is not yet switched on, so nothing in your local portfolio shelf is moved or overwritten.</span></aside>
+      <aside className="auth-note"><b>✦ A careful transition</b><span>{privateDraftsEnabled ? 'Portfolios already in this browser stay here until you choose to copy them to your account.' : 'Accounts are live. Cloud portfolio storage is not yet switched on, so nothing in your local portfolio shelf is moved or overwritten.'}</span></aside>
     </section>
   </main>
 }
