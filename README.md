@@ -45,6 +45,10 @@ The repository began tracking development after the project was already underway
 
 Folio currently works as a local-first prototype. The project is prepared for a future Supabase connection, but it is not connected to a hosted database or authentication service yet. See [`supabase/README.md`](supabase/README.md) for the planned data model, setup sequence, and security boundaries.
 
+## 🧪 Testing
+
+Folio uses Playwright for repeatable browser smoke tests. See [`docs/agentic-testing.md`](docs/agentic-testing.md) for the local commands and the minimal agentic testing workflow.
+
 ## 📸 Preview
 
 <img width="1728" height="964" alt="Screenshot 2026-09-22 at 10 52 22 AM" src="https://github.com/user-attachments/assets/3da854be-1e09-4e2d-af80-42d75e6df75a" />
